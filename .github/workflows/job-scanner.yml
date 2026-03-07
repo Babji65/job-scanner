@@ -1,0 +1,51 @@
+name: 🔍 Job Scanner
+
+on:
+  # Runs automatically — Mon to Fri at 8:00 AM UTC (3am EST / 12am PST)
+  schedule:
+    - cron: '0 8 * * 1-5'
+
+  # Lets you trigger it manually from the GitHub Actions tab
+  workflow_dispatch:
+
+jobs:
+  scan-and-notify:
+    runs-on: ubuntu-latest
+
+    # Give the workflow permission to commit seen_jobs.json back to the repo
+    permissions:
+      contents: write
+
+    steps:
+      # ── 1. Check out the repository ──────────────────────────────────────
+      - name: Checkout repo
+        uses: actions/checkout@v4
+
+      # ── 2. Set up Python ─────────────────────────────────────────────────
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      # ── 3. Install dependencies ───────────────────────────────────────────
+      - name: Install dependencies
+        run: pip install requests
+
+      # ── 4. Run the scanner ────────────────────────────────────────────────
+      - name: Run job scanner
+        env:
+          EMAIL_SENDER:   ${{ secrets.EMAIL_SENDER }}
+          EMAIL_PASSWORD: ${{ secrets.EMAIL_PASSWORD }}
+          EMAIL_RECEIVER: ${{ secrets.EMAIL_RECEIVER }}
+          ADZUNA_APP_ID:  ${{ secrets.ADZUNA_APP_ID }}
+          ADZUNA_APP_KEY: ${{ secrets.ADZUNA_APP_KEY }}
+        run: python job_scanner.py
+
+      # ── 5. Commit seen_jobs.json so we don't re-send old listings ─────────
+      - name: Save seen jobs back to repo
+        run: |
+          git config user.name  "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add seen_jobs.json
+          git diff --cached --quiet || git commit -m "chore: update seen_jobs [skip ci]"
+          git push
