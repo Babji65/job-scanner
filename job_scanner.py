@@ -24,7 +24,7 @@ MAX_AGE_DAYS = 2
 # ─────────────────────────────────────────────
 
 EMAIL_SENDER   = os.environ["EMAIL_SENDER"]
-EMAIL_PASSWORD = os.environ["EMAIL_PASSWORD"]
+EMAIL_PASSWORD = os.environ["EMAIL_PASSWORD"].replace("\xa0", "").replace(" ", "").strip()
 EMAIL_RECEIVER = os.environ["EMAIL_RECEIVER"]
 
 ADZUNA_APP_ID  = os.environ.get("ADZUNA_APP_ID", "")
