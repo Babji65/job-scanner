@@ -11,9 +11,37 @@ from datetime import datetime, timedelta
 # ─────────────────────────────────────────────
 
 JOB_KEYWORDS = [
-    "software engineer",
-    "python developer",
-    "backend engineer",
+    # Aerospace + Software/CS hybrid roles
+    "flight software engineer intern",
+    "aerospace software engineer intern",
+    "flight software intern",
+    "embedded software aerospace intern",
+    "avionics software intern",
+    "guidance navigation control intern",
+    "GNC software intern",
+    "aerospace simulation engineer intern",
+    "simulation software intern",
+    "spacecraft software intern",
+
+    # Systems Engineering
+    "systems engineer intern aerospace",
+    "systems engineer intern",
+    "aerospace systems engineer intern",
+
+    # General CS roles at aerospace companies
+    "software engineer intern aerospace",
+    "software engineering co-op aerospace",
+    "computer science intern aerospace",
+    "backend engineer intern",
+    "software engineer intern",
+    "software engineering co-op",
+
+    # Specific domains
+    "robotics software intern",
+    "autonomous systems intern",
+    "real-time systems intern",
+    "mission systems software intern",
+    "propulsion software intern",
 ]
 
 # Only show jobs posted within this many days
