@@ -11,37 +11,66 @@ from datetime import datetime, timedelta
 # ─────────────────────────────────────────────
 
 JOB_KEYWORDS = [
-    # Aerospace + Software/CS hybrid roles
+    # --- Aerospace + Flight Software ---
     "flight software engineer intern",
-    "aerospace software engineer intern",
     "flight software intern",
-    "embedded software aerospace intern",
+    "flight software co-op",
     "avionics software intern",
+    "avionics software co-op",
+    "embedded software aerospace intern",
+    "spacecraft software intern",
+    "spacecraft software co-op",
+
+    # --- GNC / Simulation ---
     "guidance navigation control intern",
     "GNC software intern",
-    "aerospace simulation engineer intern",
-    "simulation software intern",
-    "spacecraft software intern",
+    "GNC engineer intern",
+    "aerospace simulation intern",
+    "simulation software engineer intern",
+    "modeling and simulation intern",
 
-    # Systems Engineering
+    # --- Systems Engineering ---
     "systems engineer intern aerospace",
-    "systems engineer intern",
+    "systems engineering intern",
+    "systems engineering co-op",
     "aerospace systems engineer intern",
+    "mission systems intern",
 
-    # General CS roles at aerospace companies
-    "software engineer intern aerospace",
-    "software engineering co-op aerospace",
-    "computer science intern aerospace",
-    "backend engineer intern",
+    # --- Defense / Military ---
+    "defense software engineer intern",
+    "defense systems engineer intern",
+    "missile systems software intern",
+    "C2 systems intern",
+    "radar software intern",
+
+    # --- Commercial Space ---
+    "space systems software intern",
+    "launch vehicle software intern",
+    "satellite software intern",
+    "satellite systems engineer intern",
+    "propulsion software intern",
+
+    # --- NASA / Government ---
+    "NASA software engineering intern",
+    "NASA systems engineer intern",
+    "NASA intern computer science",
+    "NASA co-op",
+    "government aerospace intern",
+
+    # --- Aviation / Aircraft ---
+    "aircraft systems software intern",
+    "avionics engineer intern",
+    "flight controls software intern",
+    "aircraft simulation intern",
+
+    # --- Broad CS Net (aerospace companies) ---
     "software engineer intern",
     "software engineering co-op",
-
-    # Specific domains
-    "robotics software intern",
-    "autonomous systems intern",
+    "computer science intern",
+    "backend engineer intern",
     "real-time systems intern",
-    "mission systems software intern",
-    "propulsion software intern",
+    "autonomous systems intern",
+    "robotics software intern",
 ]
 
 # Only show jobs posted within this many days
