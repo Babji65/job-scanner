@@ -2,9 +2,11 @@ import requests
 import smtplib
 import os
 import json
+import pandas as pd
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
 from datetime import datetime, timedelta
+from jobspy import scrape_jobs
 
 # ─────────────────────────────────────────────
 #  CONFIGURATION — Edit these to match your needs
@@ -87,6 +89,10 @@ EMAIL_RECEIVER = os.environ["EMAIL_RECEIVER"]
 ADZUNA_APP_ID  = os.environ.get("ADZUNA_APP_ID", "")
 ADZUNA_APP_KEY = os.environ.get("ADZUNA_APP_KEY", "")
 
+# Register free at: https://developer.usajobs.gov/
+USAJOBS_API_KEY    = os.environ.get("USAJOBS_API_KEY", "")
+USAJOBS_USER_AGENT = os.environ.get("USAJOBS_USER_AGENT", "")  # must be your email
+
 SEEN_JOBS_FILE = "seen_jobs.json"
 
 # ─────────────────────────────────────────────
@@ -104,7 +110,7 @@ def save_seen_jobs(seen: set):
         json.dump(list(seen), f)
 
 # ─────────────────────────────────────────────
-#  Job Sources
+#  Job Sources — Free APIs
 # ─────────────────────────────────────────────
 
 def search_remotive(keyword: str) -> list:
@@ -192,6 +198,222 @@ def search_jobicy(keyword: str) -> list:
     except Exception as e:
         print(f"[Jobicy] Error: {e}")
         return []
+
+# ─────────────────────────────────────────────
+#  Job Sources — JobSpy (Indeed, LinkedIn, etc.)
+# ─────────────────────────────────────────────
+
+def search_jobspy(keyword: str) -> list:
+    """Uses jobspy to scrape Indeed, LinkedIn, Glassdoor, ZipRecruiter.
+    Install with: pip install jobspy
+    """
+    try:
+        df = scrape_jobs(
+            site_name=["indeed", "linkedin", "glassdoor", "zip_recruiter"],
+            search_term=keyword,
+            location="United States",
+            results_wanted=20,
+            hours_old=MAX_AGE_DAYS * 24,
+            country_indeed="USA",
+            job_type="internship",    # filters for internships where supported
+            is_remote=False,          # aerospace jobs are mostly on-site
+        )
+        jobs = []
+        for _, row in df.iterrows():
+            jobs.append({
+                "title":   row.get("title", "N/A"),
+                "company": row.get("company", "N/A"),
+                "url":     row.get("job_url", ""),
+                "posted":  str(row.get("date_posted", ""))[:10],
+                "source":  str(row.get("site", "JobSpy")).capitalize(),
+                "tags":    str(row.get("job_type", "")),
+            })
+        return jobs
+    except Exception as e:
+        print(f"[JobSpy] Error: {e}")
+        return []
+
+# ─────────────────────────────────────────────
+#  Job Sources — USAJobs (NASA, DoD, Air Force)
+# ─────────────────────────────────────────────
+
+def search_usajobs(keyword: str) -> list:
+    """USAJobs API — covers NASA, JPL, DoD, Air Force, etc.
+    Register free at: https://developer.usajobs.gov/
+    Set env vars: USAJOBS_API_KEY and USAJOBS_USER_AGENT (your email).
+    """
+    if not USAJOBS_API_KEY or not USAJOBS_USER_AGENT:
+        print("[USAJobs] Skipping — missing USAJOBS_API_KEY or USAJOBS_USER_AGENT.")
+        return []
+    try:
+        url = "https://data.usajobs.gov/api/search"
+        headers = {
+            "Host":              "data.usajobs.gov",
+            "User-Agent":        USAJOBS_USER_AGENT,
+            "Authorization-Key": USAJOBS_API_KEY,
+        }
+        params = {
+            "Keyword":        keyword,
+            "ResultsPerPage": 25,
+            "WhoMayApply":    "all",
+        }
+        resp = requests.get(url, headers=headers, params=params, timeout=15)
+        resp.raise_for_status()
+        jobs = []
+        cutoff = datetime.utcnow() - timedelta(days=MAX_AGE_DAYS)
+        for item in resp.json().get("SearchResult", {}).get("SearchResultItems", []):
+            pos = item.get("MatchedObjectDescriptor", {})
+            posted_str = pos.get("PublicationStartDate", "")[:10]
+            try:
+                posted_dt = datetime.strptime(posted_str, "%Y-%m-%d")
+            except ValueError:
+                posted_dt = datetime.utcnow()
+            if posted_dt >= cutoff:
+                categories = pos.get("JobCategory", [])
+                tag = categories[0].get("Name", "") if categories else ""
+                jobs.append({
+                    "title":   pos.get("PositionTitle", "N/A"),
+                    "company": pos.get("OrganizationName", "N/A"),
+                    "url":     pos.get("PositionURI", ""),
+                    "posted":  posted_str,
+                    "source":  "USAJobs",
+                    "tags":    tag,
+                })
+        return jobs
+    except Exception as e:
+        print(f"[USAJobs] Error: {e}")
+        return []
+
+# ─────────────────────────────────────────────
+#  Job Sources — Greenhouse (open JSON feeds)
+#  SpaceX, Blue Origin, Northrop Grumman, L3Harris, Textron
+# ─────────────────────────────────────────────
+
+GREENHOUSE_BOARDS = {
+    "SpaceX":           "spacex",
+    "Blue Origin":      "blueorigin",
+    "Northrop Grumman": "northropgrumman",
+    "L3Harris":         "l3harris",
+    "Textron":          "textron",
+}
+
+def search_greenhouse(keyword: str) -> list:
+    """Scrapes Greenhouse job boards (open JSON — no auth required)."""
+    jobs = []
+    kw_lower = keyword.lower()
+    for company, board_token in GREENHOUSE_BOARDS.items():
+        try:
+            url = f"https://boards-api.greenhouse.io/v1/boards/{board_token}/jobs?content=true"
+            resp = requests.get(url, timeout=15)
+            resp.raise_for_status()
+            for job in resp.json().get("jobs", []):
+                title = job.get("title", "")
+                title_lower = title.lower()
+                is_intern = any(t in title_lower for t in ["intern", "co-op", "coop", "student"])
+                is_match  = any(w in title_lower for w in kw_lower.split())
+                if is_intern and is_match:
+                    updated = job.get("updated_at", "")[:10]
+                    depts = job.get("departments", [])
+                    tag = depts[0].get("name", "") if depts else ""
+                    jobs.append({
+                        "title":   title,
+                        "company": company,
+                        "url":     job.get("absolute_url", ""),
+                        "posted":  updated,
+                        "source":  f"Greenhouse",
+                        "tags":    tag,
+                    })
+        except Exception as e:
+            print(f"[Greenhouse:{company}] Error: {e}")
+    return jobs
+
+# ─────────────────────────────────────────────
+#  Job Sources — Lever (open JSON feeds)
+#  Anduril, Relativity Space, Rocket Lab, Joby, Archer
+# ─────────────────────────────────────────────
+
+LEVER_BOARDS = {
+    "Anduril":          "anduril",
+    "Relativity Space": "relativityspace",
+    "Rocket Lab":       "rocketlab",
+    "Joby Aviation":    "joby-aviation",
+    "Archer Aviation":  "archeraviation",
+}
+
+def search_lever(keyword: str) -> list:
+    """Scrapes Lever job boards (open JSON — no auth required)."""
+    jobs = []
+    kw_lower = keyword.lower()
+    for company, slug in LEVER_BOARDS.items():
+        try:
+            url = f"https://api.lever.co/v0/postings/{slug}?mode=json"
+            resp = requests.get(url, timeout=15)
+            resp.raise_for_status()
+            for job in resp.json():
+                title = job.get("text", "")
+                title_lower = title.lower()
+                is_intern = any(t in title_lower for t in ["intern", "co-op", "coop", "student"])
+                is_match  = any(w in title_lower for w in kw_lower.split())
+                if is_intern and is_match:
+                    created_ts = job.get("createdAt", 0) / 1000
+                    posted_str = datetime.utcfromtimestamp(created_ts).strftime("%Y-%m-%d")
+                    cutoff = datetime.utcnow() - timedelta(days=MAX_AGE_DAYS)
+                    if datetime.utcfromtimestamp(created_ts) >= cutoff:
+                        jobs.append({
+                            "title":   title,
+                            "company": company,
+                            "url":     job.get("hostedUrl", ""),
+                            "posted":  posted_str,
+                            "source":  "Lever",
+                            "tags":    job.get("categories", {}).get("team", ""),
+                        })
+        except Exception as e:
+            print(f"[Lever:{company}] Error: {e}")
+    return jobs
+
+# ─────────────────────────────────────────────
+#  Job Sources — Workday (Lockheed, Boeing, Raytheon)
+#  Note: Workday endpoint paths may shift — check each
+#  company's careers page network tab if one stops working.
+# ─────────────────────────────────────────────
+
+WORKDAY_COMPANIES = {
+    "Lockheed Martin": "https://lockheedmartin.wd5.myworkdayjobs.com/wday/cxs/lockheedmartin/LMCareers/jobs",
+    "Boeing":          "https://boeing.wd1.myworkdayjobs.com/wday/cxs/boeing/EXTERNAL_CAREERS/jobs",
+    "Raytheon":        "https://raytheon.wd5.myworkdayjobs.com/wday/cxs/raytheon/RTX/jobs",
+}
+
+def search_workday(keyword: str) -> list:
+    """Hits Workday JSON endpoints for Lockheed Martin, Boeing, and Raytheon."""
+    jobs = []
+    payload = {
+        "appliedFacets": {},
+        "limit":         20,
+        "offset":        0,
+        "searchText":    keyword,
+    }
+    headers = {"Content-Type": "application/json"}
+    for company, url in WORKDAY_COMPANIES.items():
+        try:
+            resp = requests.post(url, json=payload, headers=headers, timeout=15)
+            resp.raise_for_status()
+            base_url = url.split("/wday/")[0]
+            for job in resp.json().get("jobPostings", []):
+                title = job.get("title", "N/A")
+                title_lower = title.lower()
+                is_intern = any(t in title_lower for t in ["intern", "co-op", "coop", "student", "co op"])
+                if is_intern:
+                    jobs.append({
+                        "title":   title,
+                        "company": company,
+                        "url":     base_url + job.get("externalPath", ""),
+                        "posted":  job.get("postedOn", "")[:10],
+                        "source":  "Workday",
+                        "tags":    job.get("locationsText", ""),
+                    })
+        except Exception as e:
+            print(f"[Workday:{company}] Error: {e}")
+    return jobs
 
 # ─────────────────────────────────────────────
 #  Deduplication
@@ -314,6 +536,11 @@ def main():
         all_jobs += search_remotive(keyword)
         all_jobs += search_adzuna(keyword)
         all_jobs += search_jobicy(keyword)
+        all_jobs += search_jobspy(keyword)       # Indeed, LinkedIn, Glassdoor, ZipRecruiter
+        all_jobs += search_usajobs(keyword)      # NASA, DoD, Air Force, etc.
+        all_jobs += search_greenhouse(keyword)   # SpaceX, Blue Origin, Northrop, L3Harris, Textron
+        all_jobs += search_lever(keyword)        # Rocket Lab, Relativity, Joby, Anduril, Archer
+        all_jobs += search_workday(keyword)      # Lockheed Martin, Boeing, Raytheon
 
     print(f"Raw results: {len(all_jobs)} jobs")
     new_jobs = deduplicate(all_jobs, seen_urls)
