@@ -22,7 +22,7 @@ jobs:
           python-version: '3.11'
       # ── 3. Install dependencies ───────────────────────────────────────────
       - name: Install dependencies
-        run: pip install requests pandas jobspy
+        run: pip install requests pandas python-jobspy
       # ── 4. Run the scanner ────────────────────────────────────────────────
       - name: Run job scanner
         env:
